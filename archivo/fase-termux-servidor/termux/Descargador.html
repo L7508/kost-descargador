@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Descargador</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!--
+  ======================================================================
+  LEE ESTO ANTES DE TOCAR EL JS — límites reales de esta página
+  ======================================================================
+  Esta página vive dentro de un "artifact": un HTML aislado con su
+  propia política de seguridad (CSP). Esa política decide qué tanto de
+  un "descargador real" cabe aquí. En concreto:
+
+  1) NO hay extracción de video de sitios como YouTube/TikTok/Instagram.
+     Esos sitios no exponen el archivo en una URL directa: lo entregan
+     fragmentado (DASH/HLS) y firmado, y extraerlo requiere un programa
+     como yt-dlp corriendo en un SERVIDOR (no en el navegador). Ningún
+     truco de HTML/CSS/JS del lado del cliente puede lograr eso.
+
+  2) Esta página NO puede hacer fetch()/XHR hacia dominios externos.
+     La CSP bloquea peticiones de red desde el script a cualquier
+     servidor que no sea un CDN de librerías/fuentes. Por eso no hay
+     (ni puede haber) una barra de progreso real basada en bytes: eso
+     exige leer la respuesta de fetch() en streaming, y fetch() a
+     otros dominios está bloqueado aquí.
+
+  3) Lo único que SÍ es real: si el usuario pega un enlace DIRECTO a
+     un archivo (.mp4, .mp3, .webm, .wav, .m4a, .ogg…), esta página
+     crea un <a href="ese-enlace" download> y lo "clickea" por código.
+     Eso NO es una petición fetch: es una navegación normal del
+     navegador, igual que si el usuario clickeara el link — por eso
+     SÍ atraviesa la CSP. El navegador baja el archivo directamente
+     desde su origen, sin pasar por este código.
+
+  4) El atributo "download" solo fuerza el nombre y la descarga (en
+     vez de abrir el archivo en pestaña) cuando el servidor que aloja
+     el archivo lo permite (CORS / Content-Disposition). Si no coopera,
+     el navegador puede abrirlo en una pestaña nueva. Eso lo decide el
+     servidor remoto, no esta página.
+
+  En resumen: SÍ descarga archivos reales desde enlaces directos.
+  NO puede convertir una URL de YouTube en MP3/MP4 — eso necesita un
+  backend con yt-dlp (u otra herramienta de extracción) que esta
+  página no puede alojar.
+  ======================================================================
+-->
+
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+
+    /* light (default) */
+    --bg: #F5F4F1;
+    --surface: #FFFFFF;
+    --surface-alt: #F0EEE9;
+    --border: #E1DDD4;
+    --text: #16181D;
+    --text-muted: #6D7178;
+    --accent-1: #16A870;
+    --accent-2: #0EA5C4;
+    --accent-ink: #FFFFFF;
+    --danger: #C6483C;
+    --shadow: 0 1px 2px rgba(20,23,28,.05), 0 20px 48px rgba(20,23,28,.08);
+    --ring: rgba(22,168,112,.22);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0C0E12;
+      --surface: #161A20;
+      --surface-alt: #1C212A;
+      --border: #2A303A;
+      --text: #EDEFF2;
+      --text-muted: #8D93A0;
+      --accent-1: #35E39A;
+      --accent-2: #45D4F0;
+      --accent-ink: #0A0C0F;
+      --danger: #F08A7C;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 24px 60px rgba(0,0,0,.45);
+      --ring: rgba(53,227,154,.24);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0C0E12;
+    --surface: #161A20;
+    --surface-alt: #1C212A;
+    --border: #2A303A;
+    --text: #EDEFF2;
+    --text-muted: #8D93A0;
+    --accent-1: #35E39A;
+    --accent-2: #45D4F0;
+    --accent-ink: #0A0C0F;
+    --danger: #F08A7C;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 24px 60px rgba(0,0,0,.45);
+    --ring: rgba(53,227,154,.24);
+  }
+
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+    min-height: 100%;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* ambient blobs */
+  .blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(70px);
+    opacity: .35;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .blob-a { width: 380px; height: 380px; background: var(--accent-1); top: -140px; left: -120px; }
+  .blob-b { width: 320px; height: 320px; background: var(--accent-2); bottom: -160px; right: -100px; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .blob-a { animation: drift1 14s ease-in-out infinite; }
+    .blob-b { animation: drift2 16s ease-in-out infinite; }
+  }
+  @keyframes drift1 {
+    0%, 100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(30px, 20px) scale(1.08); }
+  }
+  @keyframes drift2 {
+    0%, 100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(-24px, -18px) scale(1.06); }
+  }
+
+  .page { width: 100%; max-width: 460px; position: relative; z-index: 1; }
+
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+
+  .brand-mark {
+    width: 38px; height: 38px; border-radius: 11px;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 6px 16px -4px var(--ring);
+  }
+  .brand-mark svg { width: 19px; height: 19px; }
+
+  .brand-name { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+  .brand-tag { color: var(--text-muted); font-size: 13px; margin-top: 1px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    padding: 22px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+  }
+
+  h1 {
+    font-family: 'Sora', sans-serif;
+    font-size: 22px; line-height: 1.3; font-weight: 700;
+    letter-spacing: -0.01em; margin: 0 0 6px;
+  }
+
+  .lede { color: var(--text-muted); font-size: 14px; line-height: 1.5; margin: 0 0 6px; }
+  .lede.small { font-size: 12.5px; margin-bottom: 20px; }
+
+  .url-row { display: flex; gap: 8px; }
+
+  .input-wrap {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    border-radius: 12px;
+    transition: box-shadow .2s ease;
+  }
+  .input-wrap.focused { box-shadow: 0 0 0 4px var(--ring); }
+  .input-wrap.shake { animation: shake .32s ease; }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+  }
+
+  input[type="text"] {
+    width: 100%;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 12px;
+    padding: 13px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .15s ease;
+  }
+  input[type="text"]::placeholder { color: var(--text-muted); }
+  input[type="text"]:focus { border-color: var(--accent-1); }
+  input[type="text"].error { border-color: var(--danger); }
+
+  button { font-family: inherit; cursor: pointer; border: none; }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    color: var(--accent-ink);
+    font-weight: 700;
+    font-size: 14px;
+    padding: 13px 20px;
+    border-radius: 12px;
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 8px;
+    transition: transform .12s ease, box-shadow .2s ease, opacity .15s ease;
+    box-shadow: 0 8px 20px -8px var(--ring);
+  }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 24px -8px var(--ring); }
+  .btn-primary:disabled { opacity: .5; cursor: default; box-shadow: none; }
+  .btn-primary:not(:disabled):active { transform: scale(.97); }
+  .btn-primary.full { width: 100%; justify-content: center; }
+  .btn-primary.success { background: linear-gradient(135deg, var(--accent-1), var(--accent-1)); }
+
+  .error-msg {
+    color: var(--danger); font-size: 12.5px; margin: 8px 2px 0; min-height: 15px;
+    opacity: 0; transform: translateY(-3px); transition: opacity .18s ease, transform .18s ease;
+  }
+  .error-msg.show { opacity: 1; transform: translateY(0); }
+
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid rgba(0,0,0,.22);
+    border-top-color: var(--accent-ink);
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .result {
+    margin-top: 22px; padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: none; opacity: 0; transform: translateY(10px) scale(.98);
+    transition: opacity .4s cubic-bezier(.2,.8,.2,1), transform .4s cubic-bezier(.2,.8,.2,1);
+  }
+  .result.show { display: block; opacity: 1; transform: translateY(0) scale(1); }
+
+  .media-row { display: flex; gap: 13px; margin-bottom: 18px; align-items: center; }
+
+  .thumb {
+    width: 58px; height: 58px; border-radius: 14px; flex-shrink: 0;
+    background: linear-gradient(155deg, var(--accent-1), var(--accent-2) 130%);
+    display: flex; align-items: center; justify-content: center;
+    transform: scale(.6) rotate(-8deg);
+    opacity: 0;
+    animation: popIn .45s cubic-bezier(.2,1.4,.4,1) forwards;
+    animation-delay: .08s;
+  }
+  @keyframes popIn { to { transform: scale(1) rotate(0deg); opacity: 1; } }
+  .thumb svg { width: 23px; height: 23px; opacity: .96; }
+
+  .media-info { min-width: 0; }
+  .media-title {
+    font-size: 14.5px; font-weight: 600; line-height: 1.4; margin: 0 0 4px;
+    word-break: break-all;
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .media-meta { font-size: 12.5px; color: var(--text-muted); }
+
+  .badge {
+    display: inline-block;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--accent-1);
+    background: color-mix(in srgb, var(--accent-1) 15%, transparent);
+    padding: 3px 9px;
+    border-radius: 99px;
+    margin-top: 7px;
+    letter-spacing: .01em;
+  }
+
+  .note {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 13px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    line-height: 1.55;
+    margin-bottom: 16px;
+  }
+
+  .status-line {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--accent-1); font-weight: 700;
+    margin-top: 13px; display: none;
+    opacity: 0; transform: translateY(4px);
+    transition: opacity .3s ease, transform .3s ease;
+  }
+  .status-line.show { display: flex; opacity: 1; transform: translateY(0); }
+  .status-line svg { width: 16px; height: 16px; }
+  .status-line .check-path {
+    stroke-dasharray: 20;
+    stroke-dashoffset: 20;
+    animation: drawCheck .35s .1s ease forwards;
+  }
+  @keyframes drawCheck { to { stroke-dashoffset: 0; } }
+
+  .footnote { text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 20px; line-height: 1.5; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .result, .spinner, .btn-primary, .thumb, .status-line, .blob-a, .blob-b, .check-path { transition: none !important; animation: none !important; }
+    .thumb { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="blob blob-a"></div>
+<div class="blob blob-b"></div>
+
+<div class="page">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" stroke="var(--accent-ink)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div>
+      <div class="brand-name">Descargador</div>
+      <div class="brand-tag">Enlaces directos a archivos</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h1>Pega el enlace del archivo</h1>
+    <p class="lede">Funciona con enlaces directos (terminan en .mp4, .mp3, .webm, .wav, .m4a, .ogg…).</p>
+    <p class="lede small">No funciona con páginas como YouTube o TikTok — solo con la URL final del archivo.</p>
+
+    <div class="url-row">
+      <div class="input-wrap" id="inputWrap">
+        <input type="text" id="urlInput" placeholder="https://ejemplo.com/archivo.mp4"
+          onfocus="document.getElementById('inputWrap').classList.add('focused')"
+          onblur="document.getElementById('inputWrap').classList.remove('focused')"
+          onkeydown="if(event.key==='Enter') analyze()">
+      </div>
+      <button class="btn-primary" id="analyzeBtn" onclick="analyze()">
+        <span id="analyzeLabel">Analizar</span>
+      </button>
+    </div>
+    <div class="error-msg" id="errorMsg"></div>
+
+    <div class="result" id="result">
+      <div class="media-row">
+        <div class="thumb" id="thumb">
+          <svg id="thumbIcon" viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7L8 5z" fill="white"/></svg>
+        </div>
+        <div class="media-info">
+          <p class="media-title" id="mediaTitle">archivo.mp4</p>
+          <p class="media-meta" id="mediaMeta">ejemplo.com</p>
+          <span class="badge" id="typeBadge">Video · MP4</span>
+        </div>
+      </div>
+
+      <p class="note">Tu navegador descargará este archivo directamente desde su origen. Si el servidor no lo permite, puede abrirse en una pestaña en vez de descargarse.</p>
+
+      <button class="btn-primary full" id="downloadBtn" onclick="startDownload()">
+        <span id="downloadLabel">Descargar archivo</span>
+      </button>
+
+      <div class="status-line" id="statusLine">
+        <svg viewBox="0 0 24 24" fill="none"><path class="check-path" d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Enlace enviado al navegador</span>
+      </div>
+    </div>
+  </div>
+
+  <section style="max-width:700px;margin:30px auto;padding:24px;background:var(--surface);border:1px solid var(--border);border-radius:20px">
+<h2>Enlace de YouTube</h2>
+<p>Pega la URL de un video público que tengas derecho a guardar. Requiere yt-dlp en el servidor local.</p>
+<input id="youtubeUrl" type="url" placeholder="https://www.youtube.com/watch?v=…" style="width:100%;padding:12px">
+<select id="youtubeMode" aria-label="Formato" style="margin:12px 0;padding:10px"><option value="video">Video</option><option value="audio">Audio MP3</option></select>
+<button class="btn-primary" id="youtubeBtn" onclick="downloadYoutube()">Procesar enlace</button>
+<p id="youtubeStatus" role="status" aria-live="polite"></p><p id="serverStatus" aria-live="polite"></p>
+</section>
+<section style="max-width:700px;margin:30px auto;padding:24px;background:var(--surface);border:1px solid var(--border);border-radius:20px">
+<h2>Extraer audio de un video propio</h2>
+<p>Selecciona un archivo de tu dispositivo. Se procesa en este servidor local y se devuelve como MP3.</p>
+<input type="file" id="localFile" accept="video/*,audio/*,.mkv,.mov,.webm,.mp4,.m4a" style="max-width:100%">
+<button class="btn-primary" id="convertBtn" onclick="convertLocal()" style="margin-top:16px">Extraer MP3</button>
+<p id="convertStatus" role="status" aria-live="polite"></p>
+</section>
+<p class="footnote">Enlaces directos o videos públicos de YouTube mediante el servidor local. Para YouTube usa una instalación actualizada de yt-dlp.</p>
+</div>
+
+<script>
+  const ACCESS_TOKEN = new URLSearchParams(location.search).get('key') || '';
+  const ACCESS_HEADERS = ACCESS_TOKEN ? {'X-Access-Token': ACCESS_TOKEN} : {};
+  const KNOWN_EXT = {
+    video: ['mp4', 'webm', 'mkv', 'mov', 'avi'],
+    audio: ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac']
+  };
+
+  const ICONS = {
+    video: '<path d="M8 5v14l11-7L8 5z" fill="white"/>',
+    audio: '<path d="M9 18V5l10-2v13" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="6" cy="18" r="3" stroke="white" stroke-width="1.8" fill="none"/><circle cx="16" cy="16" r="3" stroke="white" stroke-width="1.8" fill="none"/>'
+  };
+
+  let currentUrl = '';
+  let currentFilename = '';
+
+  function getExtension(pathname) {
+    const clean = pathname.split('?')[0].split('#')[0];
+    const parts = clean.split('.');
+    return parts.length > 1 ? parts.pop().toLowerCase() : '';
+  }
+
+  function classify(ext) {
+    if (KNOWN_EXT.video.includes(ext)) return 'video';
+    if (KNOWN_EXT.audio.includes(ext)) return 'audio';
+    return null;
+  }
+
+  function showError(msg) {
+    const wrap = document.getElementById('inputWrap');
+    const input = document.getElementById('urlInput');
+    const errorMsg = document.getElementById('errorMsg');
+    input.classList.add('error');
+    errorMsg.textContent = msg;
+    errorMsg.classList.add('show');
+    wrap.classList.remove('shake');
+    void wrap.offsetWidth;
+    wrap.classList.add('shake');
+  }
+
+  function clearError() {
+    document.getElementById('urlInput').classList.remove('error');
+    const errorMsg = document.getElementById('errorMsg');
+    errorMsg.classList.remove('show');
+    errorMsg.textContent = '';
+  }
+
+  function analyze() {
+    const input = document.getElementById('urlInput');
+    const raw = input.value.trim();
+    clearError();
+    document.getElementById('result').classList.remove('show');
+
+    if (!raw) { showError('Pega un enlace antes de analizar.'); return; }
+
+    let parsed;
+    try { parsed = new URL(raw); }
+    catch (e) { showError('Ese no es un enlace válido.'); return; }
+
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      showError('El enlace debe empezar con http:// o https://');
+      return;
+    }
+
+    const ext = getExtension(parsed.pathname);
+    const kind = classify(ext);
+
+    if (!kind && ['youtube.com','www.youtube.com','m.youtube.com','youtu.be','www.youtu.be'].includes(parsed.hostname)) {
+      document.getElementById('youtubeUrl').value = raw;
+      document.getElementById('youtubeStatus').textContent = 'Enlace reconocido. Elige Video o Audio MP3 y pulsa Procesar enlace.';
+      document.getElementById('youtubeUrl').scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
+
+    if (!kind) {
+      showError('No reconozco ese enlace como archivo directo (.mp4, .mp3, .webm…). Los enlaces de YouTube/TikTok/Instagram no funcionan aquí.');
+      return;
+    }
+
+    // No podemos confirmar que el archivo exista: un fetch()/HEAD a
+    // otro dominio está bloqueado por la CSP de esta página (ver
+    // comentario al inicio del archivo, punto 2). Por eso solo
+    // mostramos lo que sí sabemos con certeza a partir de la URL.
+    currentUrl = raw;
+    currentFilename = parsed.pathname.split('/').pop() || ('archivo.' + ext);
+
+    document.getElementById('mediaTitle').textContent = currentFilename;
+    document.getElementById('mediaMeta').textContent = parsed.hostname;
+    document.getElementById('typeBadge').textContent = (kind === 'video' ? 'Video · ' : 'Audio · ') + ext.toUpperCase();
+    document.getElementById('thumbIcon').innerHTML = ICONS[kind];
+
+    document.getElementById('statusLine').classList.remove('show');
+    const btn = document.getElementById('downloadBtn');
+    btn.disabled = false;
+    btn.classList.remove('success');
+    document.getElementById('downloadLabel').textContent = 'Descargar archivo';
+
+    // reinicia la animación de entrada del thumbnail
+    const thumb = document.getElementById('thumb');
+    thumb.style.animation = 'none';
+    void thumb.offsetWidth;
+    thumb.style.animation = '';
+
+    document.getElementById('result').classList.add('show');
+  }
+
+  async function checkServer() {
+    const status = document.getElementById('serverStatus');
+    try {
+      const response = await fetch('/api/status', {cache:'no-store', headers:ACCESS_HEADERS});
+      if (!response.ok) throw new Error('Sin conexión');
+      const info = await response.json();
+      status.textContent = `Servidor activo · yt-dlp ${info.yt_dlp} · FFmpeg ${info.ffmpeg ? 'disponible' : 'no disponible'}`;
+    } catch (error) { status.textContent = 'Abre esta página desde http://127.0.0.1:8000 con server.py en ejecución.'; }
+  }
+  checkServer();
+
+  async function downloadYoutube() {
+    const url = document.getElementById('youtubeUrl').value.trim();
+    const mode = document.getElementById('youtubeMode').value;
+    const btn = document.getElementById('youtubeBtn');
+    const status = document.getElementById('youtubeStatus');
+    btn.disabled = true;
+    status.textContent = 'Obteniendo y procesando… Puede tardar unos minutos.';
+    try {
+      const response = await fetch('/api/youtube', {method:'POST', headers:{'Content-Type':'application/json', ...ACCESS_HEADERS}, body:JSON.stringify({url,mode})});
+      if (!response.ok) throw new Error((await response.json()).error || 'Error de descarga');
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const extension = disposition.match(/\.(mp3|mp4|webm|mkv|m4a)"/i)?.[1] || (mode === 'audio' ? 'mp3' : 'mp4');
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'descarga.' + extension;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+      status.textContent = 'Archivo generado. Revisa las descargas del navegador.';
+    } catch (error) { status.textContent = error.message; }
+    finally { btn.disabled = false; }
+  }
+
+  async function convertLocal() {
+    const file = document.getElementById('localFile').files[0];
+    const status = document.getElementById('convertStatus');
+    const btn = document.getElementById('convertBtn');
+    if (!file) { status.textContent = 'Selecciona un archivo.'; return; }
+    if (file.size > 200 * 1024 * 1024) { status.textContent = 'Límite: 200 MB.'; return; }
+    btn.disabled = true;
+    status.textContent = 'Subiendo y procesando…';
+    try {
+      const response = await fetch('/api/audio', {method:'POST', headers:{'Content-Type':'application/octet-stream', ...ACCESS_HEADERS}, body:file});
+      if (!response.ok) throw new Error((await response.json()).error || 'Error de conversión');
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = (file.name.replace(/\.[^.]+$/, '') || 'audio') + '.mp3';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+      status.textContent = 'MP3 generado. Revisa las descargas del navegador.';
+    } catch (error) { status.textContent = error.message; }
+    finally { btn.disabled = false; }
+  }
+
+  function startDownload() {
+    if (!currentUrl) return;
+
+    const btn = document.getElementById('downloadBtn');
+    const label = document.getElementById('downloadLabel');
+    const status = document.getElementById('statusLine');
+
+    btn.disabled = true;
+    status.classList.remove('show');
+    label.innerHTML = '';
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner';
+    label.appendChild(spinner);
+    label.append(' Iniciando…');
+
+    // Navegación real del navegador hacia el archivo — NO un fetch()
+    // hecho por este script, por eso sí atraviesa la CSP (ver punto 3
+    // del comentario inicial). El navegador decide si descarga o abre
+    // el archivo según lo que permita el servidor de origen.
+    const link = document.createElement('a');
+    link.href = currentUrl;
+    link.download = currentFilename;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setTimeout(() => {
+      label.textContent = 'Enlace abierto';
+      btn.classList.add('success');
+      btn.disabled = false;
+      status.classList.add('show');
+    }, 550);
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,14 @@
+plugins { id 'com.android.application' }
+dependencies {
+    implementation 'dev.ffmpegkit-maintained:yt-dlp-android:2.0.2'
+}
+android {
+    namespace 'com.kost.descargador'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.kost.descargador'
+        minSdk 29
+        targetSdk 29
+    }
+}

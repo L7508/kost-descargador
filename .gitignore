@@ -1,0 +1,35 @@
+# Android / Gradle
+**/.gradle/
+**/build/
+**/local.properties
+**/.idea/
+*.iml
+*.apk
+*.aab
+*.dex
+*.class
+*.jks
+*.keystore
+keystore.properties
+# Python
+**/.venv/
+**/venv/
+**/__pycache__/
+*.py[cod]
+# Private configuration and local downloads
+.env
+.env.*
+!.env.example
+cookies*.txt
+**/cookies*.txt
+*.log
+*.part
+*.ytdl
+*.mp4
+*.webm
+*.mp3
+*.m4a
+*.zip
+.DS_Store
+Thumbs.db
+# Keep Gradle wrappers, including their JARs, in Git.
