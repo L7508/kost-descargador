@@ -1,0 +1,43 @@
+name: APK experimental de Kost
+on:
+  push:
+    branches: [experimental/motor-integrado]
+    paths:
+      - 'apps/android-motor-integrado/**'
+      - '.github/workflows/motor-integrado-prueba.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: kost-motor-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compilar-y-entregar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Preparar SDK Android
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"'
+      - name: Compilar y revisar
+        working-directory: apps/android-motor-integrado
+        run: ./gradlew :app:assembleDebug :app:lintDebug --no-daemon
+      - name: Preparar archivos
+        run: |
+          mkdir -p entrega
+          cp apps/android-motor-integrado/app/build/outputs/apk/debug/app-debug.apk entrega/Kost_motor_interno_v01.apk
+          git archive --format=zip --prefix=kost-descargador/ HEAD > entrega/Kost_proyecto_motor_interno_v01.zip
+          cd entrega
+          sha256sum Kost_motor_interno_v01.apk Kost_proyecto_motor_interno_v01.zip > SHA256SUMS.txt
+      - name: Publicar entrega experimental
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="kost-motor-interno-${GITHUB_SHA::7}"
+          gh release create "$tag" entrega/Kost_motor_interno_v01.apk entrega/Kost_proyecto_motor_interno_v01.zip entrega/SHA256SUMS.txt --target "$GITHUB_SHA" --prerelease --title "Kost motor interno — prueba v0.1" --notes-file docs/ENTREGA_MOTOR_INTERNO.md

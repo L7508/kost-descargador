@@ -6,6 +6,7 @@ Código del descargador reorganizado a partir de `repaso.zip`, el 6 de octubre d
 
 | Ruta | Uso | Estado |
 | --- | --- | --- |
+| `apps/android-motor-integrado` | Motor Python/QuickJS/FFmpeg dentro de la APK | Experimento separado; descarga en teléfono pendiente |
 | `apps/android-termux-automatico` | Envía una URL a Termux mediante RUN_COMMAND | Base para continuar; requiere Termux |
 | `apps/android-interno-diagnostico` | Prueba biblioteca interna y conexión a servidor | Diagnóstico; el HTTP 403 no se considera resuelto |
 | `apps/android-servidor` | Interfaz Android conectada a servidor Python | Versión anterior |
