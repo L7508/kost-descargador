@@ -39,3 +39,12 @@ Verificación de construcción concluida el 2026-10-17:
 - Se volvió a verificar el SHA-256 del ejecutable yt-dlp dentro del APK.
 
 Esto concluye la preparación y compilación de la prueba, no la validación de descargas en Android. No se probó ningún teléfono ni se publicaron cambios remotos en GitHub.
+
+## 2026-10-17 — Entrega mediante GitHub concluida
+
+- Se publicó el código en la rama `experimental/motor-integrado`, sin modificar `main`.
+- GitHub Actions completó con éxito compilación, Lint y publicación: https://github.com/L7508/kost-descargador/actions/runs/39082989523 .
+- Se publicó una entrega experimental con APK, ZIP de fuentes y SHA256SUMS: https://github.com/L7508/kost-descargador/releases/tag/kost-motor-interno-e0e16a4 .
+- El commit de la entrega es `e0e16a435824be0f3552656323dc0fec01bc21a2`. El APK se recompiló y firmó en GitHub; el ZIP corresponde a ese commit.
+
+La entrega de archivos queda concluida. La instalación, reproducción y descarga en el teléfono continúan EN PRUEBAS; no se declara resuelto el HTTP 403.
