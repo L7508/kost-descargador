@@ -2,6 +2,16 @@
 
 Código del descargador reorganizado a partir de `repaso.zip`, el 6 de octubre de 2026. Es un repositorio con proyectos independientes; abre cada app por separado en Android Studio.
 
+## Documentación consolidada — 29 de octubre de 2026
+
+- [Bitácora completa y estado de las variantes](docs/BITACORA.md).
+- [Instrucciones de instalación, pruebas y diagnóstico](docs/INSTRUCCIONES.md).
+- [Pruebas realizadas, errores y pendientes](docs/PRUEBAS_Y_PENDIENTES.md).
+- [Evaluación parcial de REA](docs/REA.md).
+- [Fuentes, decisiones y límites de esta recopilación](docs/FUENTES_Y_ALCANCE.md).
+
+**APK independiente: EN PRUEBAS.** Se compiló y publicó en [esta entrega experimental](https://github.com/L7508/kost-descargador/releases/tag/kost-motor-interno-e0e16a4), pero no se ha recuperado confirmación de descarga correcta en el teléfono. Sus fuentes están en [experimental/motor-integrado](https://github.com/L7508/kost-descargador/tree/experimental/motor-integrado); esta rama main contiene la documentación consolidada y las variantes originales.
+
 ## Carpetas
 
 | Ruta | Uso | Estado |
@@ -38,8 +48,8 @@ Los README originales se conservan como antecedentes. Cuando mencionen rutas ant
 
 ## Git
 
-Consulta `docs/GIT.md`. Este paquete tiene .gitignore y .gitattributes, pero no incluye un historial Git inventado ni un remoto. No se ha publicado en GitHub.
+Consulta `docs/GIT.md`. El repositorio ya está publicado en GitHub; la descripción del paquete original y su organización del 6 de octubre se conserva en `docs/BITACORA_ORGANIZACION_2026-10-06.md`. Mantén fuera de Git credenciales, configuraciones locales y archivos personales.
 
 ## Alcance de la revisión
 
-Se comprobó la integridad del respaldo, la sintaxis de los servidores Python y la correspondencia de las fuentes copiadas. No se compilaron las apps ni se probaron descargas en un teléfono. La organización no resuelve errores de descarga ni da por concluida la APK autosuficiente.
+Se comprobó la integridad del respaldo, la sintaxis de los servidores Python y la correspondencia de las fuentes copiadas. En aquella organización no se compilaron las apps ni se probaron descargas en un teléfono. Posteriormente se compiló y publicó el motor nuevo en la rama experimental; el estado funcional sigue EN PRUEBAS. Véase la bitácora consolidada para distinguir ambos momentos.
